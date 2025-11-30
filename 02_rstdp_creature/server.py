@@ -1,26 +1,26 @@
 """
-Simple HTTP server for R-STDP Creature Animation
+Simple HTTP server for R-STDP Deep Creature Animation
 
 Uses built-in Python http.server - no external dependencies!
+Supports multi-layer neural network visualization.
 """
 
 import http.server
 import socketserver
 import json
-import threading
-import time
-from urllib.parse import urlparse, parse_qs
 import os
+from urllib.parse import urlparse, parse_qs
 
 # Change to the script directory
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from world import World, Action, EntityType
-from creature import CreatureBrain
+from creature import DeepCreatureBrain
 
 
-# Global simulation state
 class SimState:
+    """Global simulation state with deep neural network"""
+    
     def __init__(self):
         self.world = None
         self.brain = None
@@ -34,17 +34,23 @@ class SimState:
         self.last_result = {}
         
     def reset(self, seed=None):
+        """Reset simulation with new deep network"""
         self.world = World(
             world_size=10.0,
             spawn_prob=0.5,
             despawn_prob=0.15,
             seed=seed
         )
-        self.brain = CreatureBrain(
-            learning_rate=0.4,
-            initial_weight=0.3,
+        
+        # Use deep brain with eligibility traces!
+        self.brain = DeepCreatureBrain(
+            hidden_sizes=[6, 4],      # Two hidden layers
+            learning_rate=0.25,
+            trace_decay=0.85,         # Eligibility trace decay
+            weight_decay=0.002,       # Forgetting rate
             seed=seed
         )
+        
         self.world.reset()
         self.total_reward = 0
         self.episode += 1
@@ -54,8 +60,9 @@ class SimState:
         self.last_result = {}
         
     def to_dict(self):
+        """Get current state as dictionary for JSON"""
         if not self.world or not self.brain:
-            return {"error": "Not initialized"}
+            return {"error": "Simulation not initialized"}
         
         sensory = self.world.get_sensory_input()
         entity_type_str = "none"
@@ -68,6 +75,24 @@ class SimState:
         if self.total_decisions > 0:
             accuracy = self.correct_count / self.total_decisions
         
+        # Get deep network info
+        network_stats = self.brain.get_network_stats()
+        layer_info = self.brain.get_layer_info()
+        
+        # Format layers for JSON
+        layers_data = []
+        for info in layer_info:
+            layers_data.append({
+                "index": info["index"],
+                "shape": f"{info['input_size']}→{info['output_size']}",
+                "num_synapses": info["num_synapses"],
+                "weights": info["weights"].tolist(),
+                "eligibility": info["eligibility"].tolist(),
+                "mean_weight": float(info["mean_weight"]),
+                "max_weight": float(info["max_weight"]),
+                "mean_eligibility": float(info["mean_eligibility"])
+            })
+        
         return {
             "creature_pos": self.world.creature_pos,
             "entity_type": entity_type_str,
@@ -79,6 +104,14 @@ class SimState:
                 "danger_left": sensory[2],
                 "danger_right": sensory[3]
             },
+            # Deep network info
+            "network": {
+                "architecture": network_stats["architecture"],
+                "total_synapses": network_stats["total_synapses"],
+                "num_layers": network_stats["num_layers"],
+                "layers": layers_data
+            },
+            # Backward compatible: output layer weights
             "weights": self.brain.get_weights().tolist(),
             "total_reward": self.total_reward,
             "episode": self.episode,
@@ -90,6 +123,7 @@ class SimState:
         }
     
     def do_step(self):
+        """Execute one simulation step"""
         if not self.world or not self.brain:
             return {"error": "Not initialized"}
         
@@ -118,17 +152,28 @@ class SimState:
             if correct:
                 self.correct_count += 1
         
+        # Learn with reward
         if reward != 0:
             self.brain.learn(sensory, action, reward)
+        else:
+            # Still update eligibility traces (decay happens)
+            self.brain.learn(sensory, action, 0)
         
         self.total_reward += reward
         self.step += 1
+        
+        # Get eligibility info for visualization
+        total_eligibility = sum(
+            abs(layer.eligibility).sum() 
+            for layer in self.brain.layers
+        )
         
         self.last_result = {
             "action": action.name,
             "reward": reward,
             "correct": correct,
-            "panic": panic
+            "panic": panic,
+            "eligibility_total": float(total_eligibility)
         }
         
         return self.last_result
@@ -138,6 +183,8 @@ sim_state = SimState()
 
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
+    """HTTP request handler with REST API"""
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory="static", **kwargs)
     
@@ -182,18 +229,19 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(content)
     
     def log_message(self, format, *args):
-        # Suppress logging for API calls
         if "/api/" not in args[0]:
             super().log_message(format, *args)
 
 
-def run_server(port=8765):
+def run_server(port=8766):
     with socketserver.TCPServer(("", port), RequestHandler) as httpd:
-        print(f"\n{'='*50}")
-        print("R-STDP Creature Animation Server")
-        print(f"{'='*50}")
-        print(f"\n  Open in browser: http://localhost:{port}\n")
-        print("  Press Ctrl+C to stop\n")
+        print(f"\n{'='*60}")
+        print("  R-STDP Deep Creature Animation Server")
+        print(f"{'='*60}")
+        print(f"\n  Architecture: 4 → 6 → 4 → 2 (56 plastic synapses)")
+        print(f"  Features: Eligibility traces + Weight decay")
+        print(f"\n  Open in browser: http://localhost:{port}")
+        print("\n  Press Ctrl+C to stop\n")
         httpd.serve_forever()
 
 

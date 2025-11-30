@@ -154,14 +154,13 @@ class World:
         # Calculate reward
         reward = self._calculate_reward(old_pos, action)
         
-        # Check if creature reached entity
+        # Check if creature reached entity (for info only, no immediate despawn)
         reached_entity = False
         if self.entity_pos is not None:
             if abs(self.creature_pos - self.entity_pos) < 0.5:
                 reached_entity = True
-                # Despawn entity when reached
-                self.entity_type = EntityType.NONE
-                self.entity_pos = None
+                # NOTE: Entity despawns only via random chance in _update_entities()
+                # This ensures equal exposure time for food and danger
         
         # Update entity spawning/despawning
         self._update_entities()
@@ -180,8 +179,10 @@ class World:
         
         Reward logic:
         - +1 if moved towards food
+        - -0.5 if moved away from food (mild punishment)
         - +1 if moved away from danger
-        - 0 otherwise
+        - -1.0 if moved towards danger (strong punishment!)
+        - 0 if no entity present
         """
         if self.entity_pos is None or action == Action.STAY:
             return 0.0
@@ -199,14 +200,16 @@ class World:
             if (moved_left and entity_is_left) or (moved_right and entity_is_right):
                 return 1.0
             else:
-                return 0.0
+                # Mild punishment for moving away from food
+                return -0.5
         
         elif self.entity_type == EntityType.DANGER:
             # Reward for moving away from danger
             if (moved_left and entity_is_right) or (moved_right and entity_is_left):
                 return 1.0
             else:
-                return 0.0
+                # Strong punishment for moving towards danger!
+                return -1.0
         
         return 0.0
     
