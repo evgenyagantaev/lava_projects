@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R-STDP Creature Learning</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'VT323', monospace;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a1a2a 100%);
+            min-height: 100vh;
+            color: #00ff88;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #00ff88;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 24px;
+            color: #00ff88;
+            text-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: #88ffcc;
+        }
+
+        /* World Container */
+        .world-container {
+            background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+            border: 3px solid #30363d;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .world-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(0, 255, 136, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 0, 136, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        /* Ground/Track */
+        .track {
+            height: 120px;
+            background: linear-gradient(180deg, 
+                transparent 0%, 
+                #1a2a1a 40%, 
+                #2a3a2a 60%, 
+                #1a2a1a 100%);
+            border-radius: 10px;
+            position: relative;
+            margin: 20px 0;
+            border: 2px solid #3a4a3a;
+        }
+
+        .track-line {
+            position: absolute;
+            bottom: 30px;
+            left: 5%;
+            right: 5%;
+            height: 4px;
+            background: repeating-linear-gradient(
+                90deg,
+                #4a5a4a 0px,
+                #4a5a4a 20px,
+                transparent 20px,
+                transparent 40px
+            );
+        }
+
+        .track-markers {
+            position: absolute;
+            bottom: 5px;
+            left: 5%;
+            right: 5%;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #6a7a6a;
+        }
+
+        /* Creature */
+        .creature {
+            position: absolute;
+            bottom: 35px;
+            width: 60px;
+            height: 60px;
+            transform: translateX(-50%);
+            transition: left 0.3s ease-out;
+            z-index: 10;
+        }
+
+        .creature-body {
+            font-size: 50px;
+            text-align: center;
+            filter: drop-shadow(0 0 10px rgba(0, 200, 255, 0.5));
+            transition: transform 0.1s ease;
+        }
+
+        .creature.moving-left .creature-body {
+            transform: scaleX(-1);
+        }
+
+        .creature.panic .creature-body {
+            animation: shake 0.2s infinite;
+            filter: drop-shadow(0 0 20px rgba(255, 0, 0, 0.8));
+        }
+
+        .creature.happy .creature-body {
+            animation: bounce 0.3s ease;
+            filter: drop-shadow(0 0 20px rgba(0, 255, 0, 0.8));
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0) rotate(0deg); }
+            25% { transform: translateX(-5px) rotate(-5deg); }
+            75% { transform: translateX(5px) rotate(5deg); }
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        /* Entity (Food/Danger) */
+        .entity {
+            position: absolute;
+            bottom: 35px;
+            width: 50px;
+            height: 50px;
+            transform: translateX(-50%);
+            font-size: 45px;
+            text-align: center;
+            transition: left 0.3s ease, opacity 0.3s ease;
+            z-index: 5;
+        }
+
+        .entity.food {
+            filter: drop-shadow(0 0 15px rgba(0, 255, 0, 0.6));
+            animation: float 2s ease-in-out infinite;
+        }
+
+        .entity.danger {
+            filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.8));
+            animation: pulse 0.5s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-10px); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.1); }
+        }
+
+        .entity.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Status Indicators */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 20px;
+        }
+
+        .indicator.correct {
+            background: rgba(0, 255, 0, 0.2);
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            animation: glow-green 1s ease;
+        }
+
+        .indicator.panic {
+            background: rgba(255, 0, 0, 0.3);
+            border: 2px solid #ff0000;
+            color: #ff0000;
+            animation: flash-red 0.3s infinite;
+        }
+
+        .indicator.neutral {
+            background: rgba(100, 100, 100, 0.2);
+            border: 2px solid #666;
+            color: #888;
+        }
+
+        @keyframes glow-green {
+            0% { box-shadow: 0 0 20px rgba(0, 255, 0, 0.8); }
+            100% { box-shadow: none; }
+        }
+
+        @keyframes flash-red {
+            0%, 100% { background: rgba(255, 0, 0, 0.3); }
+            50% { background: rgba(255, 0, 0, 0.6); }
+        }
+
+        /* Stats Panel */
+        .stats-panel {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .stats-panel {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid #0f3460;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .stat-value.reward {
+            color: #ffcc00;
+        }
+
+        .stat-value.accuracy {
+            color: #00ccff;
+        }
+
+        /* Weight Matrix */
+        .weights-container {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid #0f3460;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .weights-title {
+            font-size: 18px;
+            color: #00ff88;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .weight-matrix {
+            display: grid;
+            grid-template-columns: auto repeat(4, 1fr);
+            gap: 5px;
+            font-size: 14px;
+        }
+
+        .weight-cell {
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+        }
+
+        .weight-header {
+            background: #0a0a1a;
+            color: #888;
+            font-size: 11px;
+        }
+
+        .weight-label {
+            background: #0a0a1a;
+            color: #888;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .weight-value {
+            background: linear-gradient(135deg, #1a3a2a 0%, #2a4a3a 100%);
+            color: #00ff88;
+            font-weight: bold;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .weight-value.high {
+            background: linear-gradient(135deg, #2a5a3a 0%, #3a7a4a 100%);
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+
+        .weight-value.low {
+            background: linear-gradient(135deg, #3a2a2a 0%, #4a3a3a 100%);
+            color: #ff8888;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 12px;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #00aa44 0%, #00ff66 100%);
+            color: #000;
+        }
+
+        .btn-start:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 102, 0.5);
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #aa4400 0%, #ff6600 100%);
+            color: #000;
+        }
+
+        .btn-stop:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 102, 0, 0.5);
+        }
+
+        .btn-reset {
+            background: linear-gradient(135deg, #4400aa 0%, #6600ff 100%);
+            color: #fff;
+        }
+
+        .btn-reset:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(102, 0, 255, 0.5);
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+
+        .speed-control label {
+            font-size: 14px;
+            color: #888;
+        }
+
+        .speed-slider {
+            width: 150px;
+            accent-color: #00ff88;
+        }
+
+        /* Message Display */
+        .message-display {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .message-display.show {
+            opacity: 1;
+        }
+
+        .message-display.correct {
+            background: rgba(0, 255, 0, 0.9);
+            color: #000;
+            text-shadow: 0 0 10px #fff;
+        }
+
+        .message-display.panic {
+            background: rgba(255, 0, 0, 0.9);
+            color: #fff;
+            animation: shake 0.2s infinite;
+        }
+
+        /* Sensory Display */
+        .sensory-display {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .sensory-item {
+            padding: 10px 20px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid #333;
+            font-size: 16px;
+        }
+
+        .sensory-item.active {
+            border-color: #00ff88;
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+        }
+
+        /* Connection status */
+        .connection-status {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .connection-status.connected {
+            background: rgba(0, 255, 0, 0.2);
+            color: #00ff00;
+        }
+
+        .connection-status.disconnected {
+            background: rgba(255, 0, 0, 0.2);
+            color: #ff0000;
+        }
+
+        /* Help text */
+        .help-text {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧠 R-STDP CREATURE 🧠</h1>
+            <div class="subtitle">Watch a neural network learn to seek food and avoid danger!</div>
+        </header>
+
+        <!-- Status Indicator -->
+        <div class="status-bar">
+            <div id="statusIndicator" class="indicator neutral">
+                <span id="statusIcon">⏸️</span>
+                <span id="statusText">Ready</span>
+            </div>
+            <div class="sensory-display">
+                <div id="sensFood" class="sensory-item">🍎 Food</div>
+                <div id="sensDanger" class="sensory-item">☠️ Danger</div>
+            </div>
+            <div id="actionDisplay" class="indicator neutral">
+                <span>Action: </span>
+                <span id="actionText">-</span>
+            </div>
+        </div>
+
+        <!-- World -->
+        <div class="world-container">
+            <div class="track">
+                <div class="track-line"></div>
+                <div class="track-markers">
+                    <span>-10</span>
+                    <span>-5</span>
+                    <span>0</span>
+                    <span>5</span>
+                    <span>10</span>
+                </div>
+                
+                <!-- Entity -->
+                <div id="entity" class="entity hidden">
+                    <span id="entityIcon">🍎</span>
+                </div>
+                
+                <!-- Creature -->
+                <div id="creature" class="creature" style="left: 50%;">
+                    <div class="creature-body">🐛</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-panel">
+            <div class="stat-box">
+                <div class="stat-label">Episode</div>
+                <div id="episodeValue" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Step</div>
+                <div id="stepValue" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total Reward</div>
+                <div id="rewardValue" class="stat-value reward">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Accuracy</div>
+                <div id="accuracyValue" class="stat-value accuracy">0%</div>
+            </div>
+        </div>
+
+        <!-- Weight Matrix -->
+        <div class="weights-container">
+            <div class="weights-title">🔗 Synaptic Weights (Learning in Progress...)</div>
+            <div class="weight-matrix">
+                <div class="weight-cell"></div>
+                <div class="weight-cell weight-header">🍎←<br>Food Left</div>
+                <div class="weight-cell weight-header">🍎→<br>Food Right</div>
+                <div class="weight-cell weight-header">☠️←<br>Danger Left</div>
+                <div class="weight-cell weight-header">☠️→<br>Danger Right</div>
+                
+                <div class="weight-cell weight-label">⬅️ Left</div>
+                <div id="w00" class="weight-cell weight-value">0.00</div>
+                <div id="w01" class="weight-cell weight-value">0.00</div>
+                <div id="w02" class="weight-cell weight-value">0.00</div>
+                <div id="w03" class="weight-cell weight-value">0.00</div>
+                
+                <div class="weight-cell weight-label">➡️ Right</div>
+                <div id="w10" class="weight-cell weight-value">0.00</div>
+                <div id="w11" class="weight-cell weight-value">0.00</div>
+                <div id="w12" class="weight-cell weight-value">0.00</div>
+                <div id="w13" class="weight-cell weight-value">0.00</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button id="btnStart" class="btn btn-start">▶ Start</button>
+            <button id="btnStop" class="btn btn-stop">⏹ Stop</button>
+            <button id="btnReset" class="btn btn-reset">🔄 Reset</button>
+            <div class="speed-control">
+                <label>Speed:</label>
+                <input type="range" id="speedSlider" class="speed-slider" min="50" max="1000" value="400">
+                <span id="speedValue">400ms</span>
+            </div>
+        </div>
+
+        <div class="help-text">
+            🎯 Goal: Creature learns to approach 🍎 FOOD and avoid ☠️ DANGER<br>
+            Watch the weights change as it learns from rewards!
+        </div>
+    </div>
+
+    <!-- Message Display -->
+    <div id="messageDisplay" class="message-display"></div>
+
+    <!-- Connection Status -->
+    <div id="connectionStatus" class="connection-status disconnected">⚫ Loading...</div>
+
+    <script>
+        // State
+        let isRunning = false;
+        let speed = 400;
+        let loopTimeout = null;
+
+        // DOM Elements
+        const creature = document.getElementById('creature');
+        const entity = document.getElementById('entity');
+        const entityIcon = document.getElementById('entityIcon');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusText = document.getElementById('statusText');
+        const actionText = document.getElementById('actionText');
+        const messageDisplay = document.getElementById('messageDisplay');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const sensFood = document.getElementById('sensFood');
+        const sensDanger = document.getElementById('sensDanger');
+
+        // API calls
+        async function apiCall(endpoint) {
+            try {
+                const response = await fetch('/api/' + endpoint);
+                return await response.json();
+            } catch (e) {
+                console.error('API error:', e);
+                connectionStatus.className = 'connection-status disconnected';
+                connectionStatus.textContent = '🔴 Disconnected';
+                return null;
+            }
+        }
+
+        // Update display from state
+        function updateDisplay(state) {
+            if (!state || state.error) return;
+            
+            connectionStatus.className = 'connection-status connected';
+            connectionStatus.textContent = '🟢 Connected';
+            
+            // Update creature position
+            const posPercent = ((state.creature_pos + state.world_size) / (2 * state.world_size)) * 90 + 5;
+            creature.style.left = posPercent + '%';
+            
+            // Update entity
+            if (state.entity_type === 'none') {
+                entity.classList.add('hidden');
+            } else {
+                entity.classList.remove('hidden');
+                const entityPercent = ((state.entity_pos + state.world_size) / (2 * state.world_size)) * 90 + 5;
+                entity.style.left = entityPercent + '%';
+                
+                if (state.entity_type === 'food') {
+                    entity.className = 'entity food';
+                    entityIcon.textContent = '🍎';
+                } else {
+                    entity.className = 'entity danger';
+                    entityIcon.textContent = '☠️';
+                }
+            }
+            
+            // Update sensory display
+            const hasFood = state.sensory.food_left || state.sensory.food_right;
+            const hasDanger = state.sensory.danger_left || state.sensory.danger_right;
+            
+            sensFood.className = 'sensory-item' + (hasFood ? ' active' : '');
+            sensDanger.className = 'sensory-item' + (hasDanger ? ' active' : '');
+            
+            if (state.sensory.food_left) sensFood.textContent = '← 🍎 Food';
+            else if (state.sensory.food_right) sensFood.textContent = '🍎 Food →';
+            else sensFood.textContent = '🍎 Food';
+            
+            if (state.sensory.danger_left) sensDanger.textContent = '← ☠️ Danger';
+            else if (state.sensory.danger_right) sensDanger.textContent = '☠️ Danger →';
+            else sensDanger.textContent = '☠️ Danger';
+            
+            // Update stats
+            document.getElementById('episodeValue').textContent = state.episode;
+            document.getElementById('stepValue').textContent = state.step;
+            document.getElementById('rewardValue').textContent = state.total_reward.toFixed(0);
+            document.getElementById('accuracyValue').textContent = (state.accuracy * 100).toFixed(1) + '%';
+            
+            // Update weights
+            if (state.weights) {
+                updateWeights(state.weights);
+            }
+            
+            // Handle last result feedback
+            if (state.last_result) {
+                if (state.last_result.action) {
+                    actionText.textContent = state.last_result.action;
+                }
+                if (state.last_result.panic) {
+                    showPanic();
+                } else if (state.last_result.correct) {
+                    showCorrect();
+                }
+            }
+        }
+
+        // Update weight matrix
+        function updateWeights(weights) {
+            const maxWeight = Math.max(...weights.flat(), 1);
+            
+            for (let i = 0; i < 2; i++) {
+                for (let j = 0; j < 4; j++) {
+                    const cell = document.getElementById(`w${i}${j}`);
+                    const value = weights[i][j];
+                    cell.textContent = value.toFixed(2);
+                    
+                    if (value > maxWeight * 0.6) {
+                        cell.className = 'weight-cell weight-value high';
+                    } else if (value < maxWeight * 0.2) {
+                        cell.className = 'weight-cell weight-value low';
+                    } else {
+                        cell.className = 'weight-cell weight-value';
+                    }
+                }
+            }
+        }
+
+        // Show panic state
+        function showPanic() {
+            creature.classList.add('panic');
+            creature.classList.remove('happy');
+            
+            statusIndicator.className = 'indicator panic';
+            statusIcon.textContent = '😱';
+            statusText.textContent = 'WRONG!';
+            
+            showMessage('😱 PANIC! WRONG WAY!', 'panic');
+            
+            setTimeout(() => {
+                creature.classList.remove('panic');
+                if (isRunning) {
+                    statusIndicator.className = 'indicator correct';
+                    statusIcon.textContent = '▶️';
+                    statusText.textContent = 'Running';
+                }
+            }, 300);
+        }
+
+        // Show correct state
+        function showCorrect() {
+            creature.classList.add('happy');
+            creature.classList.remove('panic');
+            
+            showMessage('✅ CORRECT!', 'correct');
+            
+            setTimeout(() => {
+                creature.classList.remove('happy');
+            }, 200);
+        }
+
+        // Show floating message
+        function showMessage(text, type) {
+            messageDisplay.textContent = text;
+            messageDisplay.className = 'message-display show ' + type;
+            
+            setTimeout(() => {
+                messageDisplay.classList.remove('show');
+            }, 500);
+        }
+
+        // Main simulation loop
+        async function simulationLoop() {
+            if (!isRunning) return;
+            
+            const data = await apiCall('step');
+            if (data && data.state) {
+                updateDisplay(data.state);
+            }
+            
+            loopTimeout = setTimeout(simulationLoop, speed);
+        }
+
+        // Start simulation
+        async function startSimulation() {
+            const data = await apiCall('start');
+            if (data && data.state) {
+                updateDisplay(data.state);
+                isRunning = true;
+                statusIndicator.className = 'indicator correct';
+                statusIcon.textContent = '▶️';
+                statusText.textContent = 'Running';
+                simulationLoop();
+            }
+        }
+
+        // Stop simulation
+        function stopSimulation() {
+            isRunning = false;
+            if (loopTimeout) {
+                clearTimeout(loopTimeout);
+                loopTimeout = null;
+            }
+            statusIndicator.className = 'indicator neutral';
+            statusIcon.textContent = '⏸️';
+            statusText.textContent = 'Paused';
+            apiCall('stop');
+        }
+
+        // Reset simulation
+        async function resetSimulation() {
+            stopSimulation();
+            const seed = Math.floor(Math.random() * 10000);
+            const data = await apiCall('reset?seed=' + seed);
+            if (data && data.state) {
+                updateDisplay(data.state);
+                showMessage('🔄 RESET!', 'correct');
+            }
+        }
+
+        // Button handlers
+        document.getElementById('btnStart').addEventListener('click', startSimulation);
+        document.getElementById('btnStop').addEventListener('click', stopSimulation);
+        document.getElementById('btnReset').addEventListener('click', resetSimulation);
+
+        // Speed slider
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValueDisplay = document.getElementById('speedValue');
+        
+        speedSlider.addEventListener('input', () => {
+            speed = parseInt(speedSlider.value);
+            speedValueDisplay.textContent = speed + 'ms';
+            apiCall('speed?value=' + speed);
+        });
+
+        // Initial load
+        async function init() {
+            const data = await apiCall('state');
+            if (data) {
+                if (data.error) {
+                    await apiCall('reset?seed=' + Math.floor(Math.random() * 10000));
+                    const newData = await apiCall('state');
+                    if (newData) updateDisplay(newData);
+                } else {
+                    updateDisplay(data);
+                }
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
