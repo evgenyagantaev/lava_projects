@@ -246,8 +246,11 @@
         }
 
         .stat-value.reward { color: #ffcc00; }
+        .stat-value.reward.positive { color: #00ff00; }
+        .stat-value.reward.negative { color: #ff4444; }
         .stat-value.accuracy { color: #00ccff; }
-        .stat-value.synapses { color: #ff88ff; }
+        .stat-value.epsilon { color: #ff88ff; }
+        .stat-value.total-reward { color: #88aaff; }
         .stat-value.eligibility { color: #ffaa00; }
 
         /* Network Visualization */
@@ -423,6 +426,26 @@
             box-shadow: 0 0 15px rgba(102, 0, 255, 0.5);
         }
 
+        .btn-save {
+            background: linear-gradient(135deg, #006688 0%, #00aacc 100%);
+            color: #fff;
+        }
+
+        .btn-save:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0, 170, 204, 0.5);
+        }
+
+        .btn-load {
+            background: linear-gradient(135deg, #886600 0%, #ccaa00 100%);
+            color: #000;
+        }
+
+        .btn-load:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(204, 170, 0, 0.5);
+        }
+
         .speed-control {
             display: flex;
             align-items: center;
@@ -554,6 +577,7 @@
             <div id="actionDisplay" class="indicator neutral">
                 <span>Action: </span>
                 <span id="actionText">-</span>
+                <span id="actionArrow"></span>
             </div>
         </div>
 
@@ -570,15 +594,11 @@
 
         <div class="stats-panel">
             <div class="stat-box">
-                <div class="stat-label">Episode</div>
-                <div id="episodeValue" class="stat-value">0</div>
-            </div>
-            <div class="stat-box">
                 <div class="stat-label">Step</div>
                 <div id="stepValue" class="stat-value">0</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">Reward</div>
+                <div class="stat-label">Reward Signal</div>
                 <div id="rewardValue" class="stat-value reward">0</div>
             </div>
             <div class="stat-box">
@@ -586,8 +606,12 @@
                 <div id="accuracyValue" class="stat-value accuracy">0%</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">Synapses</div>
-                <div id="synapsesValue" class="stat-value synapses">0</div>
+                <div class="stat-label">Explore ε</div>
+                <div id="epsilonValue" class="stat-value epsilon">0%</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total Reward</div>
+                <div id="totalRewardValue" class="stat-value total-reward">0</div>
             </div>
         </div>
 
@@ -605,6 +629,8 @@
             <button id="btnStart" class="btn btn-start">▶ Start</button>
             <button id="btnStop" class="btn btn-stop">⏹ Stop</button>
             <button id="btnReset" class="btn btn-reset">🔄 Reset</button>
+            <button id="btnSave" class="btn btn-save">💾 Save</button>
+            <button id="btnLoad" class="btn btn-load">📂 Load</button>
             <div class="speed-control">
                 <label>Speed:</label>
                 <input type="range" id="speedSlider" class="speed-slider" min="50" max="800" value="350">
@@ -688,14 +714,21 @@
             else sensDanger.textContent = '☠️ Danger';
 
             // Stats
-            document.getElementById('episodeValue').textContent = state.episode;
             document.getElementById('stepValue').textContent = state.step;
-            document.getElementById('rewardValue').textContent = state.total_reward.toFixed(0);
+            
+            // Current reward signal with color
+            const rewardEl = document.getElementById('rewardValue');
+            const lastReward = state.last_reward || 0;
+            rewardEl.textContent = lastReward.toFixed(1);
+            rewardEl.className = 'stat-value reward' + 
+                (lastReward > 0 ? ' positive' : (lastReward < 0 ? ' negative' : ''));
+            
             document.getElementById('accuracyValue').textContent = (state.accuracy * 100).toFixed(1) + '%';
+            document.getElementById('epsilonValue').textContent = ((state.epsilon || 0) * 100).toFixed(1) + '%';
+            document.getElementById('totalRewardValue').textContent = state.total_reward.toFixed(0);
 
             // Network info
             if (state.network) {
-                document.getElementById('synapsesValue').textContent = state.network.total_synapses;
                 networkArch.textContent = state.network.architecture;
                 archBadge.textContent = state.network.architecture;
                 updateLayersGrid(state.network.layers);
@@ -703,7 +736,15 @@
 
             // Feedback
             if (state.last_result) {
-                if (state.last_result.action) actionText.textContent = state.last_result.action;
+                const action = state.last_result.action;
+                if (action) {
+                    actionText.textContent = action;
+                    const actionArrow = document.getElementById('actionArrow');
+                    if (action === 'LEFT') actionArrow.textContent = ' ←';
+                    else if (action === 'RIGHT') actionArrow.textContent = ' →';
+                    else if (action === 'STAY') actionArrow.textContent = ' ⏹';
+                    else actionArrow.textContent = '';
+                }
                 if (state.last_result.panic) showPanic();
                 else if (state.last_result.correct) showCorrect();
             }
@@ -836,6 +877,28 @@
         document.getElementById('btnStart').addEventListener('click', startSimulation);
         document.getElementById('btnStop').addEventListener('click', stopSimulation);
         document.getElementById('btnReset').addEventListener('click', resetSimulation);
+        document.getElementById('btnSave').addEventListener('click', saveState);
+        document.getElementById('btnLoad').addEventListener('click', loadState);
+
+        async function saveState() {
+            const data = await apiCall('save');
+            if (data && data.success) {
+                showMessage('💾 SAVED!', 'correct');
+            } else {
+                showMessage('❌ SAVE FAILED', 'panic');
+            }
+        }
+
+        async function loadState() {
+            stopSimulation();
+            const data = await apiCall('load');
+            if (data && data.success && data.state) {
+                updateDisplay(data.state);
+                showMessage('📂 LOADED!', 'correct');
+            } else {
+                showMessage('📂 NO SAVED STATE', 'panic');
+            }
+        }
 
         const speedSlider = document.getElementById('speedSlider');
         const speedValueDisplay = document.getElementById('speedValue');

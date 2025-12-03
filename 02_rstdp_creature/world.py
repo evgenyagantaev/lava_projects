@@ -177,15 +177,26 @@ class World:
         """
         Calculate reward based on action and entity positions.
         
-        Reward logic:
-        - +1 if moved towards food
-        - -0.5 if moved away from food (mild punishment)
-        - +1 if moved away from danger
-        - -1.0 if moved towards danger (strong punishment!)
-        - 0 if no entity present
+        Simple and clear reward logic:
+        - +1 for moving towards food (always)
+        - +1 for moving away from danger (always)
+        - -0.5 for moving away from food
+        - -1.0 for moving towards danger
+        - STAY: +1 only if at food (distance < 1), otherwise -0.3 penalty
         """
-        if self.entity_pos is None or action == Action.STAY:
+        if self.entity_pos is None:
             return 0.0
+        
+        # Distance to entity
+        distance = abs(old_pos - self.entity_pos)
+        
+        if action == Action.STAY:
+            # STAY is only rewarded when already at food
+            if self.entity_type == EntityType.FOOD and distance < 1.0:
+                return 1.0
+            else:
+                # Penalize staying in all other cases
+                return -0.3
         
         # Direction of movement
         moved_left = (action == Action.LEFT)
@@ -196,15 +207,15 @@ class World:
         entity_is_right = (self.entity_pos > old_pos)
         
         if self.entity_type == EntityType.FOOD:
-            # Reward for moving towards food
+            # Reward for moving towards food (always, regardless of distance)
             if (moved_left and entity_is_left) or (moved_right and entity_is_right):
                 return 1.0
             else:
-                # Mild punishment for moving away from food
+                # Punishment for moving away from food
                 return -0.5
         
         elif self.entity_type == EntityType.DANGER:
-            # Reward for moving away from danger
+            # Reward for moving away from danger (always, regardless of distance)
             if (moved_left and entity_is_right) or (moved_right and entity_is_left):
                 return 1.0
             else:

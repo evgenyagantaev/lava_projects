@@ -10,7 +10,7 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
 from world import World, Action, EntityType
-from creature import CreatureBrain
+from creature import DeepCreatureBrain
 
 
 @dataclass
@@ -52,7 +52,7 @@ class Simulation:
         The creature's neural controller
     """
     
-    def __init__(self, world: World, brain: CreatureBrain):
+    def __init__(self, world: World, brain: DeepCreatureBrain):
         self.world = world
         self.brain = brain
         self.history = SimulationHistory()
@@ -88,8 +88,8 @@ class Simulation:
         # Execute action in world
         state, reward, info = self.world.step(action)
         
-        # Learn from reward
-        if learn and reward != 0:
+        # Learn from reward (call every step if learn)
+        if learn:
             self.brain.learn(sensory, action, reward)
         
         # Track statistics
@@ -320,7 +320,14 @@ def run_demo():
     
     # Create world and brain
     world = World(world_size=10, spawn_prob=0.4, despawn_prob=0.1, seed=42)
-    brain = CreatureBrain(learning_rate=0.3, initial_weight=0.5, seed=123)
+    brain = DeepCreatureBrain(
+        hidden_sizes=[6, 4],
+        learning_rate=5.0,
+        trace_decay=0.85,
+        weight_decay=0.0002,
+        initial_weight=0.5,
+        seed=123
+    )
     
     # Create simulation
     sim = Simulation(world, brain)

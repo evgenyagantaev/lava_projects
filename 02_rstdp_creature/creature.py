@@ -23,6 +23,7 @@ class LayerState:
     eligibility: np.ndarray       # Eligibility traces for R-STDP
     activation: np.ndarray        # Current activation values
     input_cache: np.ndarray       # Cached input for learning
+    trainable: bool = True        # Whether weights can change
 
 
 class DeepCreatureBrain:
@@ -36,6 +37,7 @@ class DeepCreatureBrain:
     - Reward signal broadcasts to all layers
     - Weight decay (forgetting) when not reinforced
     - Competitive learning between motor neurons
+    - Exploration annealing (epsilon decreases over time)
     
     Parameters
     ----------
@@ -49,6 +51,12 @@ class DeepCreatureBrain:
         Weight decay rate per step (forgetting)
     initial_weight : float
         Maximum initial weight value
+    epsilon_start : float
+        Initial exploration rate (random action probability)
+    epsilon_end : float
+        Final exploration rate after annealing
+    epsilon_decay : float
+        Decay rate for epsilon (per decision)
     seed : int, optional
         Random seed
     """
@@ -56,10 +64,13 @@ class DeepCreatureBrain:
     def __init__(
         self,
         hidden_sizes: List[int] = None,
-        learning_rate: float = 0.3,
-        trace_decay: float = 0.85,
-        weight_decay: float = 0.001,
+        learning_rate: float = 3.0,  # Increased for stronger plasticity
+        trace_decay: float = 0.7,    # Reduced for sharper traces
+        weight_decay: float = 0.0001,
         initial_weight: float = 0.5,
+        epsilon_start: float = 0.3,  # 30% random at start
+        epsilon_end: float = 0.02,   # 2% random at end
+        epsilon_decay: float = 0.995,  # Slow decay
         seed: Optional[int] = None
     ):
         if hidden_sizes is None:
@@ -70,6 +81,9 @@ class DeepCreatureBrain:
         self.trace_decay = trace_decay
         self.weight_decay = weight_decay
         self.initial_weight = initial_weight
+        self.epsilon = epsilon_start
+        self.epsilon_end = epsilon_end
+        self.epsilon_decay = epsilon_decay
         self.rng = np.random.default_rng(seed)
         
         # Network structure
@@ -92,23 +106,32 @@ class DeepCreatureBrain:
         """Initialize all layers with random weights"""
         self.layers = []
         
+        last_layer_index = len(self.layer_sizes) - 2
+
         for i in range(len(self.layer_sizes) - 1):
             in_size = self.layer_sizes[i]
             out_size = self.layer_sizes[i + 1]
             
-            # Xavier initialization
-            scale = np.sqrt(2.0 / (in_size + out_size))
-            weights = self.rng.uniform(
-                0.1 * scale,
-                self.initial_weight * scale,
-                size=(out_size, in_size)
-            )
+            if i == last_layer_index:
+                # Final motor layer is fixed: pass-through matrix of ones
+                weights = np.ones((out_size, in_size), dtype=np.float32)
+                trainable = False
+            else:
+                # Xavier initialization for plastic layers
+                scale = np.sqrt(2.0 / (in_size + out_size))
+                weights = self.rng.uniform(
+                    0.1 * scale,
+                    self.initial_weight * scale,
+                    size=(out_size, in_size)
+                )
+                trainable = True
             
             layer = LayerState(
                 weights=weights,
                 eligibility=np.zeros((out_size, in_size)),
                 activation=np.zeros(out_size),
-                input_cache=np.zeros(in_size)
+                input_cache=np.zeros(in_size),
+                trainable=trainable
             )
             self.layers.append(layer)
     
@@ -164,6 +187,9 @@ class DeepCreatureBrain:
         """
         Make a decision based on sensory input.
         
+        Uses epsilon-greedy exploration with annealing.
+        Includes STAY option when motor activations are below threshold.
+        
         Parameters
         ----------
         sensory_input : tuple of 4 ints
@@ -175,31 +201,24 @@ class DeepCreatureBrain:
         """
         motor_activation = self.forward(sensory_input)
         
-        # Add exploration noise
-        noise = self.rng.normal(0, 0.05, size=self.num_motor)
-        motor_activation = motor_activation + noise
-        
         left_activation = motor_activation[0]
         right_activation = motor_activation[1]
         
-        # Winner-take-all
-        threshold = 0.05
+        # Exploitation: winner-take-all with STAY threshold
+        max_activation = max(left_activation, right_activation)
+        min_activation = min(left_activation, right_activation)
+        diff_activation = max_activation - min_activation
+
+        tie_tolerance = 0.01 * max_activation
         
-        if left_activation > right_activation + threshold:
+        action = Action.STAY
+        if diff_activation <= tie_tolerance:
+            action = Action.STAY
+        elif left_activation > right_activation:
             action = Action.LEFT
-        elif right_activation > left_activation + threshold:
+        elif right_activation > left_activation:
             action = Action.RIGHT
-        else:
-            # Random when similar
-            action = Action(self.rng.integers(1, 3))
-        
-        self.decision_history.append({
-            "input": sensory_input,
-            "motor_activation": motor_activation.copy(),
-            "action": action,
-            "layer_activations": [l.activation.copy() for l in self.layers]
-        })
-        
+            
         return action
     
     def learn(
@@ -221,9 +240,10 @@ class DeepCreatureBrain:
         reward : float
             Reward signal (+1 good, -1 bad, 0 neutral)
         """
-        # Apply weight decay (forgetting)
+        # Apply weight decay only to trainable layers (forgetting)
         for layer in self.layers:
-            layer.weights *= (1.0 - self.weight_decay)
+            if layer.trainable:
+                layer.weights *= (1.0 - self.weight_decay)
         
         if reward == 0 or action == Action.STAY:
             self._record_state()
@@ -232,30 +252,32 @@ class DeepCreatureBrain:
         # Determine active motor neuron
         active_motor = 0 if action == Action.LEFT else 1
         
-        # Layer-specific learning rates (deeper layers learn slower)
-        # This helps with gradient flow
-        num_layers = len(self.layers)
+        # Consider only trainable layers for learning
+        trainable_layers = [layer for layer in self.layers if layer.trainable]
+        num_layers = len(trainable_layers)
+        if num_layers == 0:
+            self._record_state()
+            return
         
-        for i, layer in enumerate(self.layers):
+        for i, layer in enumerate(trainable_layers):
             # Decreasing learning rate for earlier layers
             layer_lr = self.learning_rate * (0.5 + 0.5 * (i + 1) / num_layers)
             
-            # R-STDP update: dW = lr * reward * eligibility
-            delta_w = layer_lr * reward * layer.eligibility
+            # Clip eligibility to prevent explosion (tighter bounds for stability)
+            layer.eligibility = np.clip(layer.eligibility, -5.0, 5.0)
             
-            # For the output layer, apply competitive learning
-            if i == num_layers - 1:
-                # Boost active motor, suppress inactive
-                active_mask = np.zeros(self.num_motor)
-                active_mask[active_motor] = 1.5
-                active_mask[1 - active_motor] = -0.3
-                delta_w = delta_w * active_mask[:, np.newaxis]
+            # R-STDP update: dW = lr * reward * eligibility
+            if reward < 0:
+                # Make punishments softer to avoid collapsing weights
+                delta_w = layer_lr * reward * layer.eligibility * 0.3
+            else:
+                delta_w = layer_lr * reward * layer.eligibility
             
             # Apply update
             layer.weights += delta_w
             
             # Clip weights to valid range
-            layer.weights = np.clip(layer.weights, 0.0, 3.0)
+            layer.weights = np.clip(layer.weights, 0.02, 3.0)
             
             # Partial reset of eligibility after reward
             layer.eligibility *= 0.3
