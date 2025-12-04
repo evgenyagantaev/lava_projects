@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LIF Neuron — Lava Animation</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="layout">
+    <header>
+      <h1>LIF neuron</h1>
+      <p>Входные спайки приходят случайно, мембранный потенциал утекает экспоненциально, выходной спайк генерируется при превышении порога.</p>
+    </header>
+    <section class="scene">
+      <div class="dendrites" id="dendrites"></div>
+      <div class="neuron">LIF Neuron</div>
+      <div class="axon" id="axon"></div>
+    </section>
+    <section class="charts">
+      <div class="chart">
+        <div class="chart-title">Membrane Potential</div>
+        <canvas id="membrane" width="460" height="200"></canvas>
+      </div>
+      <div class="chart">
+        <div class="chart-title">Spike Train</div>
+        <canvas id="spiketrain" width="460" height="200"></canvas>
+      </div>
+    </section>
+    <footer>
+      <div class="legend">
+        <span class="legend-dot blue"></span> входящие спайки &nbsp;|&nbsp;
+        <span class="legend-dot red"></span> выходные спайки &nbsp;|&nbsp;
+        <span class="legend-dot gray"></span> пороговое значение
+      </div>
+      <div class="status" id="status"></div>
+    </footer>
+  </div>
+  <script>
+    // Явно задаём WS: сервер слушает порт 8765
+    window.LIF_WS = "ws://localhost:8765/stream";
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
