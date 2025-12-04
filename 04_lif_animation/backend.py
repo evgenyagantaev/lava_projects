@@ -56,8 +56,8 @@ class PySpikeSinkModel(PyLoihiProcessModel):
 
 
 def simulate_lif(num_steps: int = 360, rate: float = 0.08, threshold: float = 1.0,
-                 spike_fraction: float = 0.4, dv: float = 0.04, bias: float = 0.0,
-                 seed: int = 0) -> Dict[str, object]:
+                 spike_fraction: float = 0.4, dv: float = 0.04, du: float = 1.0,
+                 bias: float = 0.0, seed: int = 0) -> Dict[str, object]:
     # Simulate a single floating-point LIF neuron and return traces as lists.
     rng = np.random.default_rng(seed)
     input_spikes = (rng.random(num_steps) < rate).astype(np.int16).reshape(1, num_steps)
@@ -65,19 +65,23 @@ def simulate_lif(num_steps: int = 360, rate: float = 0.08, threshold: float = 1.
 
     stimulus = SpikeIn(data=input_spikes)
     syn = Dense(weights=np.array([[spike_amp]], dtype=float))
-    lif = LIF(shape=(1,), dv=dv, du=0.0, vth=threshold, bias_mant=bias)
-    spike_sink = SinkRing(shape=(1,), buffer=num_steps)
-    v_reader = Read(buffer=num_steps, interval=1, offset=0)
-    v_reader.connect_var(lif.v)
+    lif = LIF(shape=(1,), dv=dv, du=du, vth=threshold, bias_mant=bias)
+    spike_sink = SinkRing(shape=(1,), buffer=1)
 
     stimulus.s_out.connect(syn.s_in)
     syn.a_out.connect(lif.a_in)
     lif.s_out.connect(spike_sink.a_in)
 
     run_cfg = Loihi2SimCfg(select_tag="floating_pt")
-    lif.run(condition=RunSteps(num_steps=num_steps), run_cfg=run_cfg)
-    v_trace = v_reader.data.get().flatten().tolist()
-    s_trace = spike_sink.data.get().astype(int).flatten().tolist()
+    v_trace = []
+    s_trace = []
+
+    # Step network one tick at a time to read v and spikes directly.
+    for _ in range(num_steps):
+        lif.run(condition=RunSteps(num_steps=1), run_cfg=run_cfg)
+        v_trace.append(float(lif.v.get().item()))
+        s_trace.append(int(spike_sink.data.get().item()))
+
     lif.stop()
 
     return {
