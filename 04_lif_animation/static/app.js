@@ -13,6 +13,7 @@ const state = {
   step: -1,
   phase: 0,
   lastTs: 0,
+  lastFrameTs: 0,
   stepMs: 80,
   dx: 3.2,
   viewSamples: 130,
@@ -75,6 +76,7 @@ function connectLive() {
 
     state.step = buf.v.length - 1;
     state.phase = 0;
+    state.lastFrameTs = performance.now();
 
     if (frame.input) fireDendrite();
     if (frame.spike) fireAxon();
@@ -196,19 +198,13 @@ function tick(ts) {
     return;
   }
 
-  if (!state.lastTs) state.lastTs = ts;
-  const dt = ts - state.lastTs;
-  state.phase += dt / state.stepMs;
-
-  while (state.phase >= 1) {
-    state.phase -= 1;
-    state.step = Math.min(state.step + 1, state.buffer.v.length - 1);
-  }
+  if (!state.lastFrameTs) state.lastFrameTs = ts;
+  const elapsed = ts - state.lastFrameTs;
+  state.phase = Math.min(elapsed / state.stepMs, 1);
 
   drawMembrane();
   drawSpikes();
 
-  state.lastTs = ts;
   requestAnimationFrame(tick);
 }
 

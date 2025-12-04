@@ -33,7 +33,7 @@ async def lif_stream(rate: float, dv: float, threshold: float, spike_amp: float,
     # Use lava-nc simulator to generate chunks of LIF activity and stream them.
     t = 0
     seed = 0
-    chunk_steps = 512
+    chunk_steps = 1024
 
     def chunk_generator() -> Iterator[Dict[str, float]]:
         nonlocal seed
