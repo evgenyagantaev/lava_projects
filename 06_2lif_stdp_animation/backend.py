@@ -410,12 +410,23 @@ def simulate_stdp(
     sim_state.v_post = float(v_post[-1]) if len(v_post) > 0 else 0.0
     sim_state.u_pre = float(u_pre[-1]) if len(u_pre) > 0 else 0.0
     sim_state.u_post = float(u_post[-1]) if len(u_post) > 0 else 0.0
-    sim_state.weight = float(w_history[-1]) if len(w_history) > 0 else sim_state.weight
+
+    # Get final weight from simulation
+    final_w = float(w_history[-1]) if len(w_history) > 0 else sim_state.weight
 
     # Apply weight decay towards baseline (implemented here because lava-nc
     # doesn't allow pure decay terms without spike dependencies in dw formula)
+    # Note: decay is applied to the final weight and ALSO reflected in w_history
+    # to avoid jumps between chunks
     if decay_rate > 0:
-        sim_state.apply_decay(decay_rate, w_baseline * threshold, num_steps)
+        alpha = np.exp(-decay_rate * num_steps)
+        decayed_w = w_baseline * threshold + (final_w - w_baseline * threshold) * alpha
+        sim_state.weight = decayed_w
+        # Update last value in history to match decayed weight (smooth transition)
+        if len(w_history) > 0:
+            w_history[-1] = decayed_w
+    else:
+        sim_state.weight = final_w
 
     sim_state.clip_weight()  # Ensure weight is within bounds
     sim_state.seed_counter += 1
@@ -510,7 +521,7 @@ def main() -> None:
     parser.add_argument("--w-init", type=float, default=0.2, help="Initial weight as fraction of threshold")
     parser.add_argument("--w-min", type=float, default=0.0, help="Minimum weight as fraction of threshold")
     parser.add_argument("--w-max", type=float, default=1.0, help="Maximum weight as fraction of threshold")
-    parser.add_argument("--decay-rate", type=float, default=0.001, help="Weight decay rate towards baseline")
+    parser.add_argument("--decay-rate", type=float, default=0.0, help="Weight decay rate towards baseline (0 = disabled)")
     parser.add_argument("--w-baseline", type=float, default=0.1, help="Baseline weight for decay (fraction of threshold)")
 
     parser.add_argument("--seed", type=int, default=0, help="RNG seed")

@@ -170,7 +170,7 @@ async def main():
     parser.add_argument("--w-init", type=float, default=0.2, help="Initial weight (fraction of threshold)")
     parser.add_argument("--w-min", type=float, default=0.0, help="Minimum weight (fraction of threshold)")
     parser.add_argument("--w-max", type=float, default=1.0, help="Maximum weight (fraction of threshold)")
-    parser.add_argument("--decay-rate", type=float, default=0.001, help="Weight decay rate")
+    parser.add_argument("--decay-rate", type=float, default=0.0, help="Weight decay rate towards baseline (0 = disabled)")
     parser.add_argument("--w-baseline", type=float, default=0.1, help="Weight decay baseline (fraction of threshold)")
 
     args = parser.parse_args()
