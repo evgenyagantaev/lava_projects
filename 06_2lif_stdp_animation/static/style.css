@@ -142,15 +142,15 @@ header p { margin: 0; color: var(--muted); max-width: 1100px; }
   pointer-events: none;
   left: 0;
   right: 0;
-  top: 130px;
+  top: 126px;  /* Lifted up by 4px to align with dendrites/axons */
   display: flex;
   justify-content: center;
 }
 
 .synapse-line {
   position: relative;
-  width: calc(100% - 420px);
-  min-width: 240px;
+  width: calc(100% - 560px);  /* Increased gap to hide under neuron bodies */
+  min-width: 200px;
   height: 4px;
   background: linear-gradient(90deg, var(--accent2), var(--accent));
   border-radius: 999px;

@@ -32,7 +32,7 @@ const stdpCtx = {
 const state = {
   stepMs: 80,
   dx: 3.0,
-  viewSamples: 200,
+  viewSamples: 320,  // Increased to fill full width of STDP charts (960px / 3.0 ≈ 320)
   maxBuffer: 2048,
   reconnectMs: 1200,
   lastFrameTs: 0,
@@ -267,17 +267,18 @@ function drawTrace(kind, color, dashed = false) {
   if (!data.length) return;
   const { width: w, height: h } = canvas;
   ctx.clearRect(0, 0, w, h);
-  const margin = 14;
-  const baseY = h - margin;
+  const marginY = 14;
+  const marginRight = 14;
+  const baseY = h - marginY;
   const maxV = Math.max(...data, 1);
-  const scale = (h - margin * 2) / Math.max(maxV, 1e-6);
+  const scale = (h - marginY * 2) / Math.max(maxV, 1e-6);
   const dx = state.dx;
   const view = Math.min(state.viewSamples, data.length);
 
   ctx.strokeStyle = "#1f2430";
   ctx.lineWidth = 1;
   for (let j = 0; j <= 3; j++) {
-    const y = margin + (j / 3) * (h - margin * 2);
+    const y = marginY + (j / 3) * (h - marginY * 2);
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
@@ -290,8 +291,9 @@ function drawTrace(kind, color, dashed = false) {
   ctx.beginPath();
   for (let j = 0; j < view; j++) {
     const idx = (state.stdp.step - j + data.length) % data.length;
-    const x = w - margin - j * dx - state.phase * dx;
+    const x = w - marginRight - j * dx - state.phase * dx;
     const y = baseY - data[idx] * scale;
+    if (x < 0) continue;  // Skip points outside canvas
     if (j === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
@@ -306,12 +308,13 @@ function drawWeight() {
   if (!data.length) return;
   const { width: w, height: h } = canvas;
   ctx.clearRect(0, 0, w, h);
-  const margin = 16;
-  const baseY = h - margin;
+  const marginY = 16;
+  const marginRight = 16;
+  const baseY = h - marginY;
   const minV = Math.min(...data);
   const maxV = Math.max(...data);
   const span = Math.max(maxV - minV, 1e-3);
-  const scale = (h - margin * 2) / span;
+  const scale = (h - marginY * 2) / span;
   const dx = state.dx;
   const view = Math.min(state.viewSamples, data.length);
   const zeroY = baseY - (-minV) * scale;
@@ -319,7 +322,7 @@ function drawWeight() {
   ctx.strokeStyle = "#1f2430";
   ctx.lineWidth = 1;
   for (let j = 0; j <= 3; j++) {
-    const y = margin + (j / 3) * (h - margin * 2);
+    const y = marginY + (j / 3) * (h - marginY * 2);
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
@@ -339,8 +342,9 @@ function drawWeight() {
   ctx.beginPath();
   for (let j = 0; j < view; j++) {
     const idx = (state.stdp.step - j + data.length) % data.length;
-    const x = w - margin - j * dx - state.phase * dx;
+    const x = w - marginRight - j * dx - state.phase * dx;
     const y = baseY - (data[idx] - minV) * scale;
+    if (x < 0) continue;  // Skip points outside canvas
     if (j === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
