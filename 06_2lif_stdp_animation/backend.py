@@ -271,14 +271,14 @@ def simulate_stdp(
     # Note: Weight decay is applied separately via SimulationState.apply_decay()
 
     stdp = STDPLoihi(
-        learning_rate=0.2,        # целевое Δw_max ≈ 0.2
+        learning_rate=0.2,        # target max Δw per saturated pre-post event ≈ 0.2
         A_plus=1.0,
         A_minus=-1.0,
         tau_plus=tau_plus,
         tau_minus=tau_minus,
         t_epoch=1,
-        x1_impulse=1.0,           # вместо 16
-        y1_impulse=1.0,           # вместо 16
+        x1_impulse=1.0,           # use unit impulse instead of 16
+        y1_impulse=1.0,           # use unit impulse instead of 16
     )
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -317,6 +317,10 @@ def simulate_stdp(
         learning_rule=stdp,
     )
 
+    # Initialize internal STDP traces (x1: pre, y1: post) from previous state
+    plastic.x1.init = np.full(plastic.x1.shape, sim_state.pre_trace)
+    plastic.y1.init = np.full(plastic.y1.shape, sim_state.post_trace)
+
     # ═══════════════════════════════════════════════════════════════════════
     # MONITORING
     # ═══════════════════════════════════════════════════════════════════════
@@ -328,12 +332,17 @@ def simulate_stdp(
     u_reader_pre = Read(buffer=num_steps, interval=1, offset=0)
     u_reader_post = Read(buffer=num_steps, interval=1, offset=0)
     w_reader = Read(buffer=num_steps, interval=1, offset=0)
+    # Readers for real STDP traces inside LearningDense (x1: pre, y1: post)
+    x1_reader = Read(buffer=num_steps, interval=1, offset=0)
+    y1_reader = Read(buffer=num_steps, interval=1, offset=0)
 
     v_reader_pre.connect_var(lif_pre.v)
     v_reader_post.connect_var(lif_post.v)
     u_reader_pre.connect_var(lif_pre.u)
     u_reader_post.connect_var(lif_post.u)
     w_reader.connect_var(plastic.weights)
+    x1_reader.connect_var(plastic.x1)
+    y1_reader.connect_var(plastic.y1)
 
     # ═══════════════════════════════════════════════════════════════════════
     # NETWORK TOPOLOGY
@@ -372,6 +381,8 @@ def simulate_stdp(
     raw_s_pre = np.array(spike_sink_pre.data.get()).astype(int)
     raw_s_post = np.array(spike_sink_post.data.get()).astype(int)
     raw_w = np.array(w_reader.data.get()).astype(float)
+    raw_x1 = np.array(x1_reader.data.get())
+    raw_y1 = np.array(y1_reader.data.get())
 
     lif_pre.stop()
 
@@ -386,6 +397,9 @@ def simulate_stdp(
     s_pre = raw_s_pre.flatten()
     s_post = raw_s_post.flatten()
     w_history = raw_w.flatten()
+    # Real internal STDP traces from LearningDense (x1: pre-trace, y1: post-trace)
+    pre_trace = raw_x1.flatten()
+    post_trace = raw_y1.flatten()
 
     # Ensure arrays have correct length
     def pad_array(arr, length, fill_value=0):
@@ -400,6 +414,8 @@ def simulate_stdp(
     s_pre = pad_array(s_pre, num_steps)
     s_post = pad_array(s_post, num_steps)
     w_history = pad_array(w_history, num_steps, sim_state.weight)
+    pre_trace = pad_array(pre_trace, num_steps)
+    post_trace = pad_array(post_trace, num_steps)
 
     # Apply weight clipping to history (for visualization)
     w_history = np.clip(w_history, sim_state.w_min, sim_state.w_max)
@@ -436,25 +452,14 @@ def simulate_stdp(
     # ═══════════════════════════════════════════════════════════════════════
     # COMPUTE TRACES FOR VISUALIZATION
     # ═══════════════════════════════════════════════════════════════════════
+    # At this point pre_trace / post_trace already contain the real internal
+    # STDP traces (x1, y1) read from LearningDense via x1_reader / y1_reader
+    # and padded to num_steps above. For continuity between chunks we only
+    # need to remember the last values in SimulationState and feed them back
+    # as initial values (see plastic.x1.init / plastic.y1.init).
 
-    pre_trace = np.zeros(num_steps)
-    post_trace = np.zeros(num_steps)
-    alpha_pre = np.exp(-1.0 / tau_plus)
-    alpha_post = np.exp(-1.0 / tau_minus)
-
-    # Start with previous trace values
-    current_pre_trace = sim_state.pre_trace
-    current_post_trace = sim_state.post_trace
-
-    for t in range(num_steps):
-        current_pre_trace = current_pre_trace * alpha_pre + s_pre[t]
-        current_post_trace = current_post_trace * alpha_post + s_post[t]
-        pre_trace[t] = current_pre_trace
-        post_trace[t] = current_post_trace
-
-    # Save final trace values for continuity
-    sim_state.pre_trace = current_pre_trace
-    sim_state.post_trace = current_post_trace
+    sim_state.pre_trace = float(pre_trace[-1]) if len(pre_trace) > 0 else 0.0
+    sim_state.post_trace = float(post_trace[-1]) if len(post_trace) > 0 else 0.0
 
     # ═══════════════════════════════════════════════════════════════════════
     # FORMAT OUTPUT
