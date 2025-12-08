@@ -3,86 +3,80 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>2 LIF + STDP - Lava Animation</title>
+  <title>R-STDP Animation - Lava</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="layout">
     <header>
-      <h1>2 LIF + STDP</h1>
-      <p>Два LIF-нейрона: #0 получает 3 случайных входа, #1 — два случайных входа плюс пластичный STDP-синапс от #0 (с утечкой веса).</p>
+      <h1>R-STDP: Reward-Modulated STDP</h1>
+      <p>Один пресинаптический нейрон (Pre) проецирует на два постсинаптических (A и B). Веса синапсов изменяются только при наличии сигнала награды (Reward A/B).</p>
     </header>
 
-    <div class="neurons">
-      <div class="neuron-card">
-        <section class="scene">
-          <div class="dendrites" id="dendrites-0"></div>
-          <div class="neuron">LIF #1</div>
-          <div class="axon" id="axon-0"></div>
-        </section>
-        <section class="charts">
-          <div class="chart">
-            <div class="chart-title">Membrane Potential</div>
-            <canvas id="membrane-0" width="460" height="200"></canvas>
-          </div>
-          <div class="chart">
-            <div class="chart-title">Spike Train</div>
-            <canvas id="spiketrain-0" width="460" height="200"></canvas>
-          </div>
-        </section>
-        <div class="status" id="status-0"></div>
+    <!-- Single canvas for all neurons and synapses -->
+    <section class="network-scene">
+      <canvas id="network-canvas" width="1200" height="340"></canvas>
+    </section>
+
+    <section class="membrane-charts">
+      <div class="charts-row">
+        <div class="chart">
+          <div class="chart-title">Membrane Potential (Pre)</div>
+          <canvas id="membrane-pre" width="400" height="120"></canvas>
+        </div>
+        <div class="chart">
+          <div class="chart-title">Membrane Potential (Post A)</div>
+          <canvas id="membrane-post-a" width="400" height="120"></canvas>
+        </div>
+        <div class="chart">
+          <div class="chart-title">Membrane Potential (Post B)</div>
+          <canvas id="membrane-post-b" width="400" height="120"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="rstdp-charts">
+      <div class="charts-row">
+        <div class="chart">
+          <div class="chart-title">Pre Spike Trace (x₁)</div>
+          <canvas id="pre-trace" width="600" height="100"></canvas>
+        </div>
+        <div class="chart">
+          <div class="chart-title">Post Spike Traces (y₁)</div>
+          <canvas id="post-trace" width="600" height="100"></canvas>
+        </div>
       </div>
 
-      <div class="neuron-card">
-        <section class="scene">
-          <div class="dendrites" id="dendrites-1"></div>
-          <div class="neuron">LIF #2</div>
-          <div class="axon" id="axon-1"></div>
-        </section>
-        <section class="charts">
-          <div class="chart">
-            <div class="chart-title">Membrane Potential</div>
-            <canvas id="membrane-1" width="460" height="200"></canvas>
-          </div>
-          <div class="chart">
-            <div class="chart-title">Spike Train</div>
-            <canvas id="spiketrain-1" width="460" height="200"></canvas>
-          </div>
-        </section>
-        <div class="status" id="status-1"></div>
+      <div class="charts-row">
+        <div class="chart">
+          <div class="chart-title">Eligibility Traces (tag)</div>
+          <canvas id="eligibility-trace" width="600" height="100"></canvas>
+        </div>
+        <div class="chart">
+          <div class="chart-title">Reward Signals</div>
+          <canvas id="reward-trace" width="600" height="100"></canvas>
+        </div>
       </div>
 
-      <div class="synapse-bridge">
-        <div class="synapse-line" id="synapse-line"></div>
-      </div>
-    </div>
-
-    <section class="stdp-charts">
-      <div class="chart">
-        <div class="chart-title">Pre Spike Trace</div>
-        <canvas id="pre-trace" width="960" height="120"></canvas>
-      </div>
-      <div class="chart">
-        <div class="chart-title">Post Spike Trace</div>
-        <canvas id="post-trace" width="960" height="120"></canvas>
-      </div>
-      <div class="chart">
-        <div class="chart-title">Synaptic Weight (pre0 → post1)</div>
-        <canvas id="weight-trace" width="960" height="140"></canvas>
+      <div class="chart full-width">
+        <div class="chart-title">Synaptic Weights (w<sub>A</sub>, w<sub>B</sub>)</div>
+        <canvas id="weight-trace" width="1220" height="140"></canvas>
       </div>
     </section>
 
     <footer>
       <div class="legend">
-        <span class="legend-dot blue"></span> входные спайки &nbsp;|&nbsp;
-        <span class="legend-dot red"></span> выходные спайки &nbsp;|&nbsp;
-        <span class="legend-dot gray"></span> пороговое значение
+        <span class="legend-dot blue"></span> Post A &nbsp;|&nbsp;
+        <span class="legend-dot orange"></span> Post B &nbsp;|&nbsp;
+        <span class="legend-dot green"></span> Reward &nbsp;|&nbsp;
+        <span class="legend-dot gray"></span> порог
       </div>
+      <div class="status" id="status-main"></div>
     </footer>
   </div>
   <script>
     // Default WS; override with <script>window.LIF_WS="ws://host:port/stream";</script> if needed
-    window.LIF_WS = "ws://localhost:8765/stream";
+    window.LIF_WS = "ws://127.0.0.1:8765";
   </script>
   <script src="app.js"></script>
 </body>

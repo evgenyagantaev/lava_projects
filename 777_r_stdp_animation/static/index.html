@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>R-STDP: 1 Pre + 2 Post Neurons - Lava Animation</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="layout">
+    <header>
+      <h1>R-STDP: 1 Pre + 2 Post Neurons</h1>
+      <p>Один пресинаптический LIF-нейрон и два постсинаптических R-STDP LIF-нейрона с раздельными синаптическими весами и локальными сигналами награды A и B.</p>
+    </header>
+
+    <div class="neurons">
+      <div class="neuron-card">
+        <section class="scene">
+          <div class="dendrites" id="dendrites-0"></div>
+          <div class="neuron">Pre</div>
+          <div class="axon" id="axon-0"></div>
+        </section>
+        <section class="charts">
+          <div class="chart">
+            <div class="chart-title">Membrane Potential</div>
+            <canvas id="membrane-0" width="460" height="200"></canvas>
+          </div>
+          <div class="chart">
+            <div class="chart-title">Spike Train</div>
+            <canvas id="spiketrain-0" width="460" height="200"></canvas>
+          </div>
+        </section>
+        <div class="status" id="status-0"></div>
+      </div>
+
+      <div class="neuron-card">
+        <section class="scene">
+          <div class="dendrites" id="dendrites-1"></div>
+          <div class="neuron">Post A</div>
+          <div class="reward-indicator" id="reward-a-indicator">
+            <span class="reward-label">Reward A</span>
+            <span class="reward-lamp"></span>
+          </div>
+          <div class="axon" id="axon-1"></div>
+        </section>
+        <section class="charts">
+          <div class="chart">
+            <div class="chart-title">Membrane Potential</div>
+            <canvas id="membrane-1" width="460" height="200"></canvas>
+          </div>
+          <div class="chart">
+            <div class="chart-title">Spike Train</div>
+            <canvas id="spiketrain-1" width="460" height="200"></canvas>
+          </div>
+        </section>
+        <div class="status" id="status-1"></div>
+      </div>
+
+      <div class="neuron-card">
+        <section class="scene">
+          <div class="dendrites" id="dendrites-2"></div>
+          <div class="neuron">Post B</div>
+          <div class="reward-indicator" id="reward-b-indicator">
+            <span class="reward-label">Reward B</span>
+            <span class="reward-lamp"></span>
+          </div>
+          <div class="axon" id="axon-2"></div>
+        </section>
+        <section class="charts">
+          <div class="chart">
+            <div class="chart-title">Membrane Potential</div>
+            <canvas id="membrane-2" width="460" height="200"></canvas>
+          </div>
+          <div class="chart">
+            <div class="chart-title">Spike Train</div>
+            <canvas id="spiketrain-2" width="460" height="200"></canvas>
+          </div>
+        </section>
+        <div class="status" id="status-2"></div>
+      </div>
+
+      <div class="synapse-bridge">
+        <div class="synapse-line" id="synapse-line"></div>
+      </div>
+    </div>
+
+    <section class="stdp-charts">
+      <div class="chart">
+        <div class="chart-title">Pre Spike Trace (x1)</div>
+        <canvas id="pre-trace" width="960" height="120"></canvas>
+      </div>
+      <div class="chart">
+        <div class="chart-title">Eligibility Traces E(t) for w1, w2</div>
+        <canvas id="eligibility-trace" width="960" height="120"></canvas>
+      </div>
+      <div class="chart">
+        <div class="chart-title">Reward Traces R<sub>A</sub>(t), R<sub>B</sub>(t)</div>
+        <canvas id="reward-trace" width="960" height="120"></canvas>
+      </div>
+      <div class="chart">
+        <div class="chart-title">Synaptic Weights w1 (Pre→A), w2 (Pre→B)</div>
+        <canvas id="weight-trace" width="960" height="140"></canvas>
+      </div>
+    </section>
+
+    <footer>
+      <div class="legend">
+        <span class="legend-dot blue"></span> входные спайки &nbsp;|&nbsp;
+        <span class="legend-dot red"></span> выходные спайки &nbsp;|&nbsp;
+        <span class="legend-dot gray"></span> пороговое значение &nbsp;|&nbsp;
+        <span class="legend-dot green"></span> активный сигнал награды
+      </div>
+    </footer>
+  </div>
+  <script>
+    // Default WS; override with <script>window.LIF_WS="ws://host:port/stream";</script> if needed
+    window.LIF_WS = "ws://localhost:8765/stream";
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>

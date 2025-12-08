@@ -1,12 +1,14 @@
-"""Realtime LIF+STDP stream server backed by lava-nc (two connected neurons).
+"""Realtime R-STDP stream server backed by lava-nc.
 
-Runs a WebSocket server that streams traces of two floating-point LIF neurons
-connected by a plastic STDP synapse (neuron0 -> neuron1). Frames are generated
-in chunks and emitted in realtime.
+Runs a WebSocket server that streams traces of R-STDP network:
+- 1 pre-synaptic LIF neuron
+- 2 post-synaptic RSTDPLIF neurons (A and B)
+- Plastic synapses with reward-modulated learning
 
 Features:
   - Continuous state between chunks (weights, membrane potentials, traces)
-  - Weight clipping and decay
+  - Weight clipping
+  - Eligibility and reward trace streaming
   - WebSocket streaming for real-time visualization
 
 Run:
@@ -31,24 +33,33 @@ for p in (ROOT, SRC):
     if p_str in sys.path:
         sys.path.remove(p_str)
 
-from backend import simulate_stdp, SimulationState
+from backend import simulate_rstdp, SimulationState
 
 
-async def lif_stream(
-    rate: float,
+async def rstdp_stream(
+    rate_pre: float,
+    rate_post_a: float,
+    rate_post_b: float,
     dv: float,
     threshold: float,
     spike_amp: float,
     delay_ms: int,
     chunk_steps: int,
+    learning_rate: float,
+    pre_trace_tau: float,
+    post_trace_tau: float,
+    eligibility_tau: float,
+    reward_A_start: int,
+    reward_A_end: int,
+    reward_B_start: int,
+    reward_B_end: int,
+    reward_amplitude: float,
     w_init: float,
     w_min: float,
     w_max: float,
-    decay_rate: float,
-    w_baseline: float,
 ) -> AsyncIterator[Dict[str, float]]:
     """
-    Generate frames for two LIF neurons + STDP synapse in chunks.
+    Generate frames for R-STDP network (1 pre, 2 post) in chunks.
 
     Uses persistent state for continuous simulation across chunks.
     """
@@ -57,43 +68,59 @@ async def lif_stream(
 
     # Create persistent state for this connection
     state = SimulationState(
-        weight=w_init * threshold,
-        w_min=w_min * threshold,
-        w_max=w_max * threshold,
+        w_A=w_init,
+        w_B=w_init,
+        w_min=w_min,
+        w_max=w_max,
     )
 
     while True:
         traces = await asyncio.to_thread(
-            simulate_stdp,
+            simulate_rstdp,
             num_steps=chunk_steps,
-            rate=rate,
+            rate_pre=rate_pre,
+            rate_post=(rate_post_a, rate_post_b),
             threshold=threshold,
             spike_fraction=spike_amp / threshold,
             dv=dv,
             seed=seed,
+            learning_rate=learning_rate,
+            pre_trace_tau=pre_trace_tau,
+            post_trace_tau=post_trace_tau,
+            eligibility_tau=eligibility_tau,
+            reward_A_start=reward_A_start,
+            reward_A_end=reward_A_end,
+            reward_B_start=reward_B_start,
+            reward_B_end=reward_B_end,
+            reward_amplitude=reward_amplitude,
             w_init=w_init,
             w_min=w_min,
             w_max=w_max,
-            decay_rate=decay_rate,
-            w_baseline=w_baseline,
-            use_continuous_state=False,  # Use explicit state instead
-            state=state,  # Pass state for continuity
+            use_continuous_state=False,
+            state=state,
         )
         seed += 1
 
         neurons = traces["neurons"]
+        rstdp = traces["rstdp"]
+
+        # Get minimum length across all arrays
         lengths = [
             len(neurons[0]["membrane_potential"]),
             len(neurons[1]["membrane_potential"]),
+            len(neurons[2]["membrane_potential"]),
             len(neurons[0]["spikes"]),
             len(neurons[1]["spikes"]),
-            len(neurons[0]["input_any"]),
-            len(neurons[1]["input_any"]),
-            len(traces["inputs_detail"][0][0]),
-            len(traces["inputs_detail"][1][0]),
-            len(traces["stdp"]["pre_trace"]),
-            len(traces["stdp"]["post_trace"]),
-            len(traces["stdp"]["weight"]),
+            len(neurons[2]["spikes"]),
+            len(rstdp["pre_trace"]),
+            len(rstdp["post_trace_A"]),
+            len(rstdp["post_trace_B"]),
+            len(rstdp["eligibility_A"]),
+            len(rstdp["eligibility_B"]),
+            len(rstdp["reward_A"]),
+            len(rstdp["reward_B"]),
+            len(rstdp["weight_A"]),
+            len(rstdp["weight_B"]),
         ]
         steps = min(chunk_steps, *lengths)
         if steps <= 0:
@@ -104,19 +131,43 @@ async def lif_stream(
                 "t": t,
                 "threshold": threshold,
                 "delay_ms": delay_ms,
-                "v": [neurons[0]["membrane_potential"][i], neurons[1]["membrane_potential"][i]],
-                "spike": [neurons[0]["spikes"][i], neurons[1]["spikes"][i]],
-                "input": [neurons[0]["input_any"][i], neurons[1]["input_any"][i]],
-                "input_detail": [
-                    [traces["inputs_detail"][0][0][i], traces["inputs_detail"][0][1][i], traces["inputs_detail"][0][2][i]],
-                    [traces["inputs_detail"][1][0][i], traces["inputs_detail"][1][1][i], traces["inputs_detail"][1][2][i]],
+                # Neuron data (3 neurons: Pre, Post A, Post B)
+                "v": [
+                    neurons[0]["membrane_potential"][i],
+                    neurons[1]["membrane_potential"][i],
+                    neurons[2]["membrane_potential"][i],
                 ],
-                "pre_trace": traces["stdp"]["pre_trace"][i],
-                "post_trace": traces["stdp"]["post_trace"][i],
-                "weight": traces["stdp"]["weight"][i],
-                # Include weight bounds for UI
-                "w_min": traces["stdp"]["w_min"],
-                "w_max": traces["stdp"]["w_max"],
+                "spike": [
+                    neurons[0]["spikes"][i],
+                    neurons[1]["spikes"][i],
+                    neurons[2]["spikes"][i],
+                ],
+                "input": [
+                    neurons[0]["input_any"][i],
+                    neurons[1]["input_any"][i],
+                    neurons[2]["input_any"][i],
+                ],
+                # R-STDP specific data
+                "pre_trace": rstdp["pre_trace"][i],
+                "post_trace": [
+                    rstdp["post_trace_A"][i],
+                    rstdp["post_trace_B"][i],
+                ],
+                "eligibility": [
+                    rstdp["eligibility_A"][i],
+                    rstdp["eligibility_B"][i],
+                ],
+                "reward": [
+                    rstdp["reward_A"][i],
+                    rstdp["reward_B"][i],
+                ],
+                "weight": [
+                    rstdp["weight_A"][i],
+                    rstdp["weight_B"][i],
+                ],
+                # Weight bounds for UI
+                "w_min": rstdp["w_min"],
+                "w_max": rstdp["w_max"],
             }
             t += 1
             await asyncio.sleep(delay_ms / 1000.0)
@@ -125,53 +176,90 @@ async def lif_stream(
 async def handler(
     websocket,
     *,
-    rate: float,
+    rate_pre: float,
+    rate_post_a: float,
+    rate_post_b: float,
     dv: float,
     threshold: float,
     spike_amp: float,
     delay_ms: int,
     chunk_steps: int,
+    learning_rate: float,
+    pre_trace_tau: float,
+    post_trace_tau: float,
+    eligibility_tau: float,
+    reward_A_start: int,
+    reward_A_end: int,
+    reward_B_start: int,
+    reward_B_end: int,
+    reward_amplitude: float,
     w_init: float,
     w_min: float,
     w_max: float,
-    decay_rate: float,
-    w_baseline: float,
 ):
     """Handle WebSocket connection with per-connection state."""
-    stream = lif_stream(
-        rate=rate,
+    stream = rstdp_stream(
+        rate_pre=rate_pre,
+        rate_post_a=rate_post_a,
+        rate_post_b=rate_post_b,
         dv=dv,
         threshold=threshold,
         spike_amp=spike_amp,
         delay_ms=delay_ms,
         chunk_steps=chunk_steps,
+        learning_rate=learning_rate,
+        pre_trace_tau=pre_trace_tau,
+        post_trace_tau=post_trace_tau,
+        eligibility_tau=eligibility_tau,
+        reward_A_start=reward_A_start,
+        reward_A_end=reward_A_end,
+        reward_B_start=reward_B_start,
+        reward_B_end=reward_B_end,
+        reward_amplitude=reward_amplitude,
         w_init=w_init,
         w_min=w_min,
         w_max=w_max,
-        decay_rate=decay_rate,
-        w_baseline=w_baseline,
     )
     async for frame in stream:
         await websocket.send(json.dumps(frame))
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Realtime LIF+STDP WebSocket streamer with state continuity")
+    parser = argparse.ArgumentParser(description="Realtime R-STDP WebSocket streamer")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--rate", type=float, default=0.05, help="Input spike probability per tick")
+
+    # Spike rates
+    parser.add_argument("--rate-pre", type=float, default=0.05, help="Pre-synaptic spike probability")
+    parser.add_argument("--rate-post-a", type=float, default=0.03, help="Post A spike probability")
+    parser.add_argument("--rate-post-b", type=float, default=0.03, help="Post B spike probability")
+
+    # Neuron parameters
     parser.add_argument("--dv", type=float, default=0.04, help="Membrane leak factor")
     parser.add_argument("--threshold", type=float, default=1.0, help="Spike threshold")
     parser.add_argument("--spike-fraction", type=float, default=0.4, help="Input spike amplitude as fraction of threshold")
-    parser.add_argument("--delay-ms", type=int, default=80, help="Delay between steps for visualization")
-    parser.add_argument("--chunk-steps", type=int, default=256, help="Simulation steps per chunk")
 
-    # Weight management parameters
-    parser.add_argument("--w-init", type=float, default=0.2, help="Initial weight (fraction of threshold)")
-    parser.add_argument("--w-min", type=float, default=0.0, help="Minimum weight (fraction of threshold)")
-    parser.add_argument("--w-max", type=float, default=1.0, help="Maximum weight (fraction of threshold)")
-    parser.add_argument("--decay-rate", type=float, default=0.0, help="Weight decay rate towards baseline (0 = disabled)")
-    parser.add_argument("--w-baseline", type=float, default=0.1, help="Weight decay baseline (fraction of threshold)")
+    # Timing
+    parser.add_argument("--delay-ms", type=int, default=50, help="Delay between steps for visualization")
+    parser.add_argument("--chunk-steps", type=int, default=200, help="Simulation steps per chunk")
+
+    # R-STDP parameters
+    parser.add_argument("--learning-rate", type=float, default=0.1, help="R-STDP learning rate")
+    parser.add_argument("--pre-trace-tau", type=float, default=10.0, help="Pre-synaptic trace decay tau")
+    parser.add_argument("--post-trace-tau", type=float, default=10.0, help="Post-synaptic trace decay tau")
+    parser.add_argument("--eligibility-tau", type=float, default=2.0, help="Eligibility trace decay tau")
+
+    # Reward windows
+    parser.add_argument("--reward-a-start", type=int, default=50, help="Reward A start step")
+    parser.add_argument("--reward-a-end", type=int, default=70, help="Reward A end step")
+    parser.add_argument("--reward-b-start", type=int, default=150, help="Reward B start step")
+    parser.add_argument("--reward-b-end", type=int, default=170, help="Reward B end step")
+    parser.add_argument("--reward-amplitude", type=float, default=0.5, help="Reward signal amplitude")
+
+    # Weight management
+    parser.add_argument("--w-init", type=float, default=0.5, help="Initial weight")
+    parser.add_argument("--w-min", type=float, default=0.0, help="Minimum weight")
+    parser.add_argument("--w-max", type=float, default=1.0, help="Maximum weight")
 
     args = parser.parse_args()
 
@@ -180,17 +268,26 @@ async def main():
     async def _handler(ws):
         return await handler(
             ws,
-            rate=args.rate,
+            rate_pre=args.rate_pre,
+            rate_post_a=args.rate_post_a,
+            rate_post_b=args.rate_post_b,
             dv=args.dv,
             threshold=args.threshold,
             spike_amp=spike_amp,
             delay_ms=args.delay_ms,
             chunk_steps=args.chunk_steps,
+            learning_rate=args.learning_rate,
+            pre_trace_tau=args.pre_trace_tau,
+            post_trace_tau=args.post_trace_tau,
+            eligibility_tau=args.eligibility_tau,
+            reward_A_start=args.reward_a_start,
+            reward_A_end=args.reward_a_end,
+            reward_B_start=args.reward_b_start,
+            reward_B_end=args.reward_b_end,
+            reward_amplitude=args.reward_amplitude,
             w_init=args.w_init,
             w_min=args.w_min,
             w_max=args.w_max,
-            decay_rate=args.decay_rate,
-            w_baseline=args.w_baseline,
         )
 
     stop = asyncio.Event()
@@ -207,9 +304,10 @@ async def main():
         signal.signal(signal.SIGINT, _handle)
 
     print(
-        f"Starting LIF+STDP stream on ws://{args.host}:{args.port}/stream\n"
-        f"  Parameters: rate={args.rate}, dv={args.dv}, spike_amp={spike_amp:.2f}\n"
-        f"  Weight: init={args.w_init}, min={args.w_min}, max={args.w_max}, decay={args.decay_rate}, baseline={args.w_baseline}\n"
+        f"Starting R-STDP stream on ws://{args.host}:{args.port}\n"
+        f"  Rates: pre={args.rate_pre}, post_A={args.rate_post_a}, post_B={args.rate_post_b}\n"
+        f"  Weight: init={args.w_init}, min={args.w_min}, max={args.w_max}\n"
+        f"  Reward A: [{args.reward_a_start}, {args.reward_a_end}), B: [{args.reward_b_start}, {args.reward_b_end})\n"
         f"  Chunks: {args.chunk_steps} steps, delay={args.delay_ms}ms"
     )
 
