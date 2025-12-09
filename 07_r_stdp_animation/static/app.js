@@ -764,7 +764,14 @@ function tick(ts) {
   drawSingleTrace(rstdpCtx.pre, rstdpCanvases.pre, state.rstdp.preTrace, COLORS.pre);
   drawDualTrace(rstdpCtx.post, rstdpCanvases.post, state.rstdp.postTraceA, state.rstdp.postTraceB, COLORS.postA, COLORS.postB);
   drawDualTrace(rstdpCtx.eligibility, rstdpCanvases.eligibility, state.rstdp.eligibilityA, state.rstdp.eligibilityB, COLORS.postA, COLORS.postB, true);
-  drawDualTrace(rstdpCtx.reward, rstdpCanvases.reward, state.rstdp.rewardA, state.rstdp.rewardB, COLORS.reward, "#7fdf7f");
+  drawDualTrace(
+    rstdpCtx.reward,
+    rstdpCanvases.reward,
+    state.rstdp.rewardA,
+    state.rstdp.rewardB,
+    COLORS.postA,
+    COLORS.postB
+  );  
   drawWeights();
 
   requestAnimationFrame(tick);

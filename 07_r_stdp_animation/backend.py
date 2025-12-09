@@ -332,12 +332,11 @@ def simulate_rstdp(
     post_trace_impulse: float = 1.0,
     eligibility_tau: float = 2.0,
     t_epoch: int = 1,
-    # Reward windows (step ranges)
-    reward_A_start: int = 50,
-    reward_A_end: int = 70,
-    reward_B_start: int = 150,
-    reward_B_end: int = 170,
-    reward_amplitude: float = 0.5,
+    # Reward generation (random windows)
+    reward_prob: float = 0.02,
+    reward_min_len: int = 7,
+    reward_max_len: int = 30,
+    reward_amplitude: float = 1.0,
     # Weight management
     w_init: float = 0.5,
     w_min: float = 0.0,
@@ -397,16 +396,29 @@ def simulate_rstdp(
     ).astype(np.int16)
 
     # Graded reward spikes for neurons A and B
+    # Random windows: amplitude=reward_amplitude, length in [reward_min_len, reward_max_len],
+    # with probability reward_prob to start a new window when currently inactive.
     graded_reward = np.zeros((2, num_steps), dtype=np.float32)
-    for t in range(num_steps):
-        # Account for continuous simulation with chunk offset
-        global_t = t + sim_state.seed_counter * num_steps
-        # Reward windows repeat with period num_steps (for continuous mode)
-        local_t = global_t % max(num_steps, 200)
-        if reward_A_start <= local_t < reward_A_end:
-            graded_reward[0, t] = reward_amplitude
-        if reward_B_start <= local_t < reward_B_end:
-            graded_reward[1, t] = reward_amplitude
+    reward_min_len = max(1, int(reward_min_len))
+    reward_max_len = max(reward_min_len, int(reward_max_len))
+    reward_prob = float(reward_prob)
+
+    for neuron_idx in range(2):
+        t = 0
+        while t < num_steps:
+            # Если уже активна награда, просто двигаемся дальше (окно уже проставлено)
+            if graded_reward[neuron_idx, t] > 0:
+                t += 1
+                continue
+
+            # Попытка запустить новое окно награды
+            if rng.random() < reward_prob:
+                dur = int(rng.integers(reward_min_len, reward_max_len + 1))
+                end = min(num_steps, t + dur)
+                graded_reward[neuron_idx, t:end] = reward_amplitude
+                t = end
+            else:
+                t += 1
 
     # ═══════════════════════════════════════════════════════════════════════
     # R-STDP LEARNING RULE (normalized parameters)
@@ -706,12 +718,31 @@ def main() -> None:
     parser.add_argument("--post-trace-tau", type=float, default=10.0, help="Post-synaptic trace decay tau")
     parser.add_argument("--eligibility-tau", type=float, default=2.0, help="Eligibility trace decay tau")
 
-    # Reward windows
-    parser.add_argument("--reward-a-start", type=int, default=50, help="Reward A start step")
-    parser.add_argument("--reward-a-end", type=int, default=70, help="Reward A end step")
-    parser.add_argument("--reward-b-start", type=int, default=150, help="Reward B start step")
-    parser.add_argument("--reward-b-end", type=int, default=170, help="Reward B end step")
-    parser.add_argument("--reward-amplitude", type=float, default=0.5, help="Reward signal amplitude")
+    # Reward generation (random windows)
+    parser.add_argument(
+        "--reward-prob",
+        type=float,
+        default=0.02,
+        help="Per-step probability to start a new reward window when inactive",
+    )
+    parser.add_argument(
+        "--reward-min-len",
+        type=int,
+        default=7,
+        help="Minimum reward window length (in simulation steps)",
+    )
+    parser.add_argument(
+        "--reward-max-len",
+        type=int,
+        default=30,
+        help="Maximum reward window length (in simulation steps)",
+    )
+    parser.add_argument(
+        "--reward-amplitude",
+        type=float,
+        default=1.0,
+        help="Reward signal amplitude",
+    )
 
     # Weight management
     parser.add_argument("--w-init", type=float, default=0.5, help="Initial weight")
@@ -735,10 +766,9 @@ def main() -> None:
         pre_trace_tau=args.pre_trace_tau,
         post_trace_tau=args.post_trace_tau,
         eligibility_tau=args.eligibility_tau,
-        reward_A_start=args.reward_a_start,
-        reward_A_end=args.reward_a_end,
-        reward_B_start=args.reward_b_start,
-        reward_B_end=args.reward_b_end,
+        reward_prob=args.reward_prob,
+        reward_min_len=args.reward_min_len,
+        reward_max_len=args.reward_max_len,
         reward_amplitude=args.reward_amplitude,
         w_init=args.w_init,
         w_min=args.w_min,

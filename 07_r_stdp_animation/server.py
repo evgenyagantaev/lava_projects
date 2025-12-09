@@ -49,10 +49,9 @@ async def rstdp_stream(
     pre_trace_tau: float,
     post_trace_tau: float,
     eligibility_tau: float,
-    reward_A_start: int,
-    reward_A_end: int,
-    reward_B_start: int,
-    reward_B_end: int,
+    reward_prob: float,
+    reward_min_len: int,
+    reward_max_len: int,
     reward_amplitude: float,
     w_init: float,
     w_min: float,
@@ -88,10 +87,9 @@ async def rstdp_stream(
             pre_trace_tau=pre_trace_tau,
             post_trace_tau=post_trace_tau,
             eligibility_tau=eligibility_tau,
-            reward_A_start=reward_A_start,
-            reward_A_end=reward_A_end,
-            reward_B_start=reward_B_start,
-            reward_B_end=reward_B_end,
+            reward_prob=reward_prob,
+            reward_min_len=reward_min_len,
+            reward_max_len=reward_max_len,
             reward_amplitude=reward_amplitude,
             w_init=w_init,
             w_min=w_min,
@@ -188,10 +186,9 @@ async def handler(
     pre_trace_tau: float,
     post_trace_tau: float,
     eligibility_tau: float,
-    reward_A_start: int,
-    reward_A_end: int,
-    reward_B_start: int,
-    reward_B_end: int,
+    reward_prob: float,
+    reward_min_len: int,
+    reward_max_len: int,
     reward_amplitude: float,
     w_init: float,
     w_min: float,
@@ -211,10 +208,9 @@ async def handler(
         pre_trace_tau=pre_trace_tau,
         post_trace_tau=post_trace_tau,
         eligibility_tau=eligibility_tau,
-        reward_A_start=reward_A_start,
-        reward_A_end=reward_A_end,
-        reward_B_start=reward_B_start,
-        reward_B_end=reward_B_end,
+        reward_prob=reward_prob,
+        reward_min_len=reward_min_len,
+        reward_max_len=reward_max_len,
         reward_amplitude=reward_amplitude,
         w_init=w_init,
         w_min=w_min,
@@ -249,12 +245,31 @@ async def main():
     parser.add_argument("--post-trace-tau", type=float, default=10.0, help="Post-synaptic trace decay tau")
     parser.add_argument("--eligibility-tau", type=float, default=2.0, help="Eligibility trace decay tau")
 
-    # Reward windows
-    parser.add_argument("--reward-a-start", type=int, default=50, help="Reward A start step")
-    parser.add_argument("--reward-a-end", type=int, default=70, help="Reward A end step")
-    parser.add_argument("--reward-b-start", type=int, default=150, help="Reward B start step")
-    parser.add_argument("--reward-b-end", type=int, default=170, help="Reward B end step")
-    parser.add_argument("--reward-amplitude", type=float, default=0.5, help="Reward signal amplitude")
+    # Reward generation (random windows)
+    parser.add_argument(
+        "--reward-prob",
+        type=float,
+        default=0.02,
+        help="Per-step probability to start a new reward window when inactive",
+    )
+    parser.add_argument(
+        "--reward-min-len",
+        type=int,
+        default=7,
+        help="Minimum reward window length (in simulation steps)",
+    )
+    parser.add_argument(
+        "--reward-max-len",
+        type=int,
+        default=30,
+        help="Maximum reward window length (in simulation steps)",
+    )
+    parser.add_argument(
+        "--reward-amplitude",
+        type=float,
+        default=1.0,
+        help="Reward signal amplitude",
+    )
 
     # Weight management
     parser.add_argument("--w-init", type=float, default=0.5, help="Initial weight")
@@ -280,10 +295,9 @@ async def main():
             pre_trace_tau=args.pre_trace_tau,
             post_trace_tau=args.post_trace_tau,
             eligibility_tau=args.eligibility_tau,
-            reward_A_start=args.reward_a_start,
-            reward_A_end=args.reward_a_end,
-            reward_B_start=args.reward_b_start,
-            reward_B_end=args.reward_b_end,
+            reward_prob=args.reward_prob,
+            reward_min_len=args.reward_min_len,
+            reward_max_len=args.reward_max_len,
             reward_amplitude=args.reward_amplitude,
             w_init=args.w_init,
             w_min=args.w_min,
@@ -307,7 +321,9 @@ async def main():
         f"Starting R-STDP stream on ws://{args.host}:{args.port}\n"
         f"  Rates: pre={args.rate_pre}, post_A={args.rate_post_a}, post_B={args.rate_post_b}\n"
         f"  Weight: init={args.w_init}, min={args.w_min}, max={args.w_max}\n"
-        f"  Reward A: [{args.reward_a_start}, {args.reward_a_end}), B: [{args.reward_b_start}, {args.reward_b_end})\n"
+        f"  Reward windows: prob={args.reward_prob}, "
+        f"  len=[{args.reward_min_len}, {args.reward_max_len}], "
+        f"  amp={args.reward_amplitude}\n"
         f"  Chunks: {args.chunk_steps} steps, delay={args.delay_ms}ms"
     )
 
