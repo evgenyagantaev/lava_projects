@@ -330,7 +330,7 @@ def simulate_rstdp(
     post_trace_tau: float = 20.0,
     pre_trace_impulse: float = 1.0,
     post_trace_impulse: float = 1.0,
-    eligibility_tau: float = 2.0,
+    eligibility_tau: float = 0.05,  # Decay factor, NOT time constant! Effective τ ≈ 1/0.05 = 20 steps
     t_epoch: int = 1,
     # Reward generation (random windows)
     reward_prob: float = 0.02,
@@ -497,12 +497,14 @@ def simulate_rstdp(
     w_reader = Read(buffer=num_steps, interval=1, offset=0)
     tag_reader = Read(buffer=num_steps, interval=1, offset=0)
     x1_reader = Read(buffer=num_steps, interval=1, offset=0)
+    y1_reader = Read(buffer=num_steps, interval=1, offset=0)
 
     v_reader_pre.connect_var(lif_pre.v)
     v_reader_post.connect_var(lif_post.v)
     w_reader.connect_var(plast_conn.weights)
     tag_reader.connect_var(plast_conn.tag_1)
     x1_reader.connect_var(plast_conn.x1)
+    y1_reader.connect_var(plast_conn.y1)
 
     # ═══════════════════════════════════════════════════════════════════════
     # NETWORK TOPOLOGY
@@ -551,6 +553,7 @@ def simulate_rstdp(
     raw_w = np.array(w_reader.data.get())
     raw_tag = np.array(tag_reader.data.get())
     raw_x1 = np.array(x1_reader.data.get())
+    raw_y1 = np.array(y1_reader.data.get())
 
     lif_pre.stop()
 
@@ -623,25 +626,20 @@ def simulate_rstdp(
     sim_state.seed_counter += 1
 
     # ═══════════════════════════════════════════════════════════════════════
-    # COMPUTE POST TRACES FOR VISUALIZATION
-    # (Approximation based on spikes since y1 isn't directly readable here)
+    # POST TRACES FROM MODEL (read real y1 from plast_conn)
     # ═══════════════════════════════════════════════════════════════════════
+    
+    # Shape of raw_y1: (num_steps, 2, 1) after reshape
+    if raw_y1.size >= num_steps * 2:
+        y1_data = raw_y1.reshape(num_steps, 2, 1)
+        post_trace_A = y1_data[:, 0, 0]
+        post_trace_B = y1_data[:, 1, 0]
+    else:
+        post_trace_A = np.zeros(num_steps)
+        post_trace_B = np.zeros(num_steps)
 
-    post_trace_A = np.zeros(num_steps)
-    post_trace_B = np.zeros(num_steps)
-    alpha_post = np.exp(-1.0 / post_trace_tau)
-
-    current_trace_A = sim_state.post_trace_A
-    current_trace_B = sim_state.post_trace_B
-
-    for t in range(num_steps):
-        current_trace_A = current_trace_A * alpha_post + post_trace_impulse * s_post_A[t]
-        current_trace_B = current_trace_B * alpha_post + post_trace_impulse * s_post_B[t]
-        post_trace_A[t] = current_trace_A
-        post_trace_B[t] = current_trace_B
-
-    sim_state.post_trace_A = current_trace_A
-    sim_state.post_trace_B = current_trace_B
+    sim_state.post_trace_A = float(post_trace_A[-1]) if len(post_trace_A) > 0 else 0.0
+    sim_state.post_trace_B = float(post_trace_B[-1]) if len(post_trace_B) > 0 else 0.0
 
     # ═══════════════════════════════════════════════════════════════════════
     # FORMAT OUTPUT
@@ -716,7 +714,7 @@ def main() -> None:
     parser.add_argument("--learning-rate", type=float, default=0.1, help="R-STDP learning rate")
     parser.add_argument("--pre-trace-tau", type=float, default=10.0, help="Pre-synaptic trace decay tau")
     parser.add_argument("--post-trace-tau", type=float, default=10.0, help="Post-synaptic trace decay tau")
-    parser.add_argument("--eligibility-tau", type=float, default=2.0, help="Eligibility trace decay tau")
+    parser.add_argument("--eligibility-tau", type=float, default=0.05, help="Eligibility decay factor (NOT tau! Effective τ ≈ 1/value)")
 
     # Reward generation (random windows)
     parser.add_argument(

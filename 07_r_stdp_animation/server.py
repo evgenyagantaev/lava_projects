@@ -243,7 +243,7 @@ async def main():
     parser.add_argument("--learning-rate", type=float, default=0.1, help="R-STDP learning rate")
     parser.add_argument("--pre-trace-tau", type=float, default=10.0, help="Pre-synaptic trace decay tau")
     parser.add_argument("--post-trace-tau", type=float, default=10.0, help="Post-synaptic trace decay tau")
-    parser.add_argument("--eligibility-tau", type=float, default=2.0, help="Eligibility trace decay tau")
+    parser.add_argument("--eligibility-tau", type=float, default=0.05, help="Eligibility decay factor (NOT tau! Effective τ ≈ 1/value)")
 
     # Reward generation (random windows)
     parser.add_argument(

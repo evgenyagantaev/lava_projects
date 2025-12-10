@@ -674,14 +674,13 @@ function drawWeights() {
   ctx.clearRect(0, 0, w, h);
 
   const marginY = 14;
-  const marginRight = 14;
+  const marginRight = 10;
   const baseY = h - marginY;
 
   // Fixed scale [0, 1]
   const minV = 0.0;
   const maxV = 1.0;
-  const span = maxV - minV;
-  const scale = (h - marginY * 2) / span;
+  const scale = (h - marginY * 2) / (maxV - minV);
 
   const dx = state.dx;
   const step = state.rstdp.step;
@@ -699,34 +698,46 @@ function drawWeights() {
     ctx.stroke();
   }
 
-  // Weight A (blue)
+  // Weight A (blue) - scrolling style, clip to left edge
   if (dataA.length) {
     ctx.strokeStyle = COLORS.postA;
     ctx.lineWidth = 2.2;
     ctx.beginPath();
+    let started = false;
     for (let j = 0; j < viewA; j++) {
       const idx = (step - j + dataA.length) % dataA.length;
-      const x = w - marginRight - j * dx - state.phase * dx;
+      let x = w - marginRight - j * dx - state.phase * dx;
       const y = baseY - (dataA[idx] - minV) * scale;
-      if (x < 0) continue;
-      if (j === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+      if (x < 0) x = 0;  // Clip to left edge
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+      if (x === 0) break;  // Reached left edge, stop
     }
     ctx.stroke();
   }
 
-  // Weight B (orange)
+  // Weight B (orange) - scrolling style, clip to left edge
   if (dataB.length) {
     ctx.strokeStyle = COLORS.postB;
     ctx.lineWidth = 2.2;
     ctx.beginPath();
+    let started = false;
     for (let j = 0; j < viewB; j++) {
       const idx = (step - j + dataB.length) % dataB.length;
-      const x = w - marginRight - j * dx - state.phase * dx;
+      let x = w - marginRight - j * dx - state.phase * dx;
       const y = baseY - (dataB[idx] - minV) * scale;
-      if (x < 0) continue;
-      if (j === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+      if (x < 0) x = 0;  // Clip to left edge
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+      if (x === 0) break;  // Reached left edge, stop
     }
     ctx.stroke();
   }
